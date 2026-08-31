@@ -1,1 +1,36 @@
-﻿
+.honor-hud {
+    position: absolute;
+    display: block;
+    visibility: visible;
+    pointer-events: none;
+    transform-origin: center;
+}
+
+.honor-hud svg {
+    display: block;
+    width: 100%;
+    height: 100%;
+    overflow: visible;
+}
+
+.direction-segment {
+    transition: fill 80ms linear;
+}
+
+.direction-image {
+    opacity: 0.48;
+    transition: opacity 80ms linear;
+}
+
+.direction-image.active {
+    opacity: 1;
+}
+
+.center-image {
+    pointer-events: none;
+}
+
+.center-piece-group {
+    transition-property: transform;
+    transition-timing-function: ease-out;
+}

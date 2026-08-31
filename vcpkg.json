@@ -1,6 +1,6 @@
 ﻿{
   "$schema": "https://raw.githubusercontent.com/microsoft/vcpkg-tool/main/docs/vcpkg.schema.json",
-  "name": "pluginname",
+  "name": "honor-combat",
   "version-string": "0.1",
   "dependencies": [
     "fast-cpp-csv-parser",
