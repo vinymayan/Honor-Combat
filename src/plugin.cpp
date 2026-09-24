@@ -19,6 +19,7 @@ namespace {
             RE::ScriptEventSourceHolder::GetSingleton()->AddEventSink(PC3DLoadEventHandler::GetSingleton());
             break;
         case SKSE::MessagingInterface::kPreLoadGame:
+            HonorCombatEventHandler::GetSingleton()->ClearAttackWarnings();
             Prisma::Reset();
             break;
         case SKSE::MessagingInterface::kNewGame:

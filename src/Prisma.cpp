@@ -1,4 +1,4 @@
-﻿#include "Prisma.h"
+#include "Prisma.h"
 
 #include "Configuration.h"
 #include "PrismaUI_API.h"
@@ -10,6 +10,7 @@
 #include <cmath>
 #include <cstdio>
 #include <string>
+#include <vector>
 
 namespace {
     PRISMA_UI_API::IVPrismaUI1* prismaUI = nullptr;
@@ -23,6 +24,7 @@ namespace {
     float runtimeXPercent = 50.0f;
     float runtimeYPercent = 50.0f;
     float runtimeResolutionScale = 1.0f;
+    std::vector<AttackWarningVisual> attackWarnings;
 
     void SyncVisibility();
 
@@ -38,17 +40,25 @@ namespace {
         writer.EndArray();
     }
 
-    int ResolvePrincipalDirection(int direction) {
+    int ResolvePrincipalDirection(
+        int direction,
+        const std::array<bool, Settings::kDirectionCount>& mergeWithPrevious,
+        bool mergeDirection8With1) {
         direction = std::clamp(direction, 0, 8);
         if (direction == 0) return 0;
-        if (direction == 8 && Settings::UI.mergeDirection8With1) return 1;
+        if (direction == 8 && mergeDirection8With1) return 1;
         std::size_t index = static_cast<std::size_t>(direction - 1);
-        while (index > 0 && Settings::UI.mergeWithPrevious[index]) --index;
+        while (index > 0 && mergeWithPrevious[index]) --index;
         return static_cast<int>(index + 1);
     }
 
+    int ResolvePlayerDirection(int direction) {
+        return ResolvePrincipalDirection(
+            direction, Settings::PlayerUI.mergeWithPrevious, Settings::PlayerUI.mergeDirection8With1);
+    }
+
     std::string BuildSettingsPayload() {
-        const auto& ui = Settings::UI;
+        const auto& ui = Settings::PlayerUI;
         rapidjson::StringBuffer buffer;
         rapidjson::Writer<rapidjson::StringBuffer> writer(buffer);
         writer.StartObject();
@@ -86,6 +96,32 @@ namespace {
         for (const auto& path : ui.segmentImages) writer.String(path.c_str());
         writer.EndArray();
         writer.Key("centerImage"); writer.String(ui.centerImage.c_str());
+        const auto& npc = Settings::NPCUI;
+        writer.Key("npc");
+        writer.StartObject();
+        writer.Key("enabled"); writer.Bool(npc.enabled);
+        writer.Key("scalePercent"); writer.Int(npc.scalePercent);
+        writer.Key("opacityPercent"); writer.Int(npc.opacityPercent);
+        writer.Key("offsetXPixels"); writer.Int(npc.offsetXPixels);
+        writer.Key("offsetYPixels"); writer.Int(npc.offsetYPixels);
+        writer.Key("rotationDegrees"); writer.Int(npc.rotationDegrees);
+        writer.Key("diameterPixels"); writer.Int(npc.diameterPixels);
+        writer.Key("innerDiameterPercent"); writer.Int(npc.innerDiameterPercent);
+        writer.Key("segmentGapPixels"); writer.Int(npc.segmentGapPixels);
+        writer.Key("activeColor"); WriteColor(writer, npc.activeColor);
+        writer.Key("inactiveColor"); WriteColor(writer, npc.inactiveColor);
+        writer.Key("borderColor"); WriteColor(writer, npc.borderColor);
+        writer.Key("mergeWithPrevious");
+        writer.StartArray();
+        for (const bool merge : npc.mergeWithPrevious) writer.Bool(merge);
+        writer.EndArray();
+        writer.Key("mergeDirection8With1"); writer.Bool(npc.mergeDirection8With1);
+        writer.Key("sharedSegmentImage"); writer.String(npc.sharedSegmentImage.c_str());
+        writer.Key("segmentImages");
+        writer.StartArray();
+        for (const auto& path : npc.segmentImages) writer.String(path.c_str());
+        writer.EndArray();
+        writer.EndObject();
         writer.EndObject();
         return buffer.GetString();
     }
@@ -120,10 +156,30 @@ namespace {
         prismaUI->InteropCall(view, "updateHonorCombatRuntime", payload);
     }
 
+    void SendAttackWarnings() {
+        if (!domReady || !IsViewValid()) return;
+        rapidjson::StringBuffer buffer;
+        rapidjson::Writer<rapidjson::StringBuffer> writer(buffer);
+        writer.StartArray();
+        for (const auto& warning : attackWarnings) {
+            writer.StartObject();
+            writer.Key("id"); writer.Uint(warning.id);
+            writer.Key("direction"); writer.Int(warning.direction);
+            writer.Key("xPercent"); writer.Double(warning.xPercent);
+            writer.Key("yPercent"); writer.Double(warning.yPercent);
+            writer.Key("resolutionScale"); writer.Double(warning.resolutionScale);
+            writer.Key("distanceScale"); writer.Double(warning.distanceScale);
+            writer.EndObject();
+        }
+        writer.EndArray();
+        prismaUI->InteropCall(view, "updateHonorCombatAttackWarnings", buffer.GetString());
+    }
+
     void SendAllState() {
         SendSettings();
         SendDirection();
         SendRuntimeState();
+        SendAttackWarnings();
     }
 
     bool EnsureView() {
@@ -152,8 +208,9 @@ namespace {
     }
 
     void SyncVisibility() {
-        const bool shouldShow = Settings::UI.enabled &&
-                                (runtimeEligible || (Settings::UI.editMode && runtimePreviewEligible));
+        const bool shouldShow =
+            (Settings::PlayerUI.enabled && (runtimeEligible || (Settings::PlayerUI.editMode && runtimePreviewEligible))) ||
+            (Settings::NPCUI.enabled && !attackWarnings.empty());
         const bool viewValid = IsViewValid();
         const bool hidden = viewValid ? prismaUI->IsHidden(view) : true;
         if (!shouldShow) {
@@ -203,9 +260,9 @@ bool Prisma::IsReady() {
 
 void Prisma::ApplyUISettings() {
     if (!prismaUI) return;
-    if (Settings::UI.enabled && (runtimeEligible || (Settings::UI.editMode && runtimePreviewEligible))) EnsureView();
+    if (Settings::PlayerUI.enabled && (runtimeEligible || (Settings::PlayerUI.editMode && runtimePreviewEligible))) EnsureView();
     SendSettings();
-    const int remappedDirection = ResolvePrincipalDirection(currentRawDirection);
+    const int remappedDirection = ResolvePlayerDirection(currentRawDirection);
     if (currentDirection != remappedDirection) {
         currentDirection = remappedDirection;
         SendDirection();
@@ -216,7 +273,7 @@ void Prisma::ApplyUISettings() {
 void Prisma::UpdateDirection(int direction) {
     direction = std::clamp(direction, 0, 8);
     currentRawDirection = direction;
-    const int remappedDirection = ResolvePrincipalDirection(direction);
+    const int remappedDirection = ResolvePlayerDirection(direction);
     if (currentDirection != remappedDirection) {
         currentDirection = remappedDirection;
         SendDirection();
@@ -249,6 +306,33 @@ void Prisma::UpdateRuntimeState(
     SyncVisibility();
 }
 
+void Prisma::UpdateAttackWarnings(const std::vector<AttackWarningVisual>& warnings) {
+    auto remappedWarnings = warnings;
+    for (auto& warning : remappedWarnings) {
+        warning.direction = ResolvePrincipalDirection(
+            warning.direction,
+            Settings::NPCUI.mergeWithPrevious,
+            Settings::NPCUI.mergeDirection8With1);
+    }
+    const auto nearlyEqual = [](float left, float right, float threshold) {
+        return std::abs(left - right) < threshold;
+    };
+    const bool changed = attackWarnings.size() != remappedWarnings.size() ||
+                         !std::equal(
+                             attackWarnings.begin(), attackWarnings.end(), remappedWarnings.begin(), remappedWarnings.end(),
+                             [&](const AttackWarningVisual& left, const AttackWarningVisual& right) {
+                                 return left.id == right.id && left.direction == right.direction &&
+                                        nearlyEqual(left.xPercent, right.xPercent, 0.025f) &&
+                                        nearlyEqual(left.yPercent, right.yPercent, 0.025f) &&
+                                        nearlyEqual(left.resolutionScale, right.resolutionScale, 0.005f) &&
+                                        nearlyEqual(left.distanceScale, right.distanceScale, 0.005f);
+                             });
+    if (!changed) return;
+    attackWarnings = std::move(remappedWarnings);
+    SendAttackWarnings();
+    SyncVisibility();
+}
+
 void Prisma::Reset() {
     currentRawDirection = 0;
     currentDirection = 0;
@@ -258,7 +342,9 @@ void Prisma::Reset() {
     runtimeXPercent = 50.0f;
     runtimeYPercent = 50.0f;
     runtimeResolutionScale = 1.0f;
+    attackWarnings.clear();
     SendDirection();
     SendRuntimeState();
+    SendAttackWarnings();
     SyncVisibility();
 }

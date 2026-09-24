@@ -1,5 +1,17 @@
 #pragma once
 
+#include <cstdint>
+#include <vector>
+
+struct AttackWarningVisual {
+    std::uint32_t id{ 0 };
+    int direction{ 0 };
+    float xPercent{ 50.0f };
+    float yPercent{ 50.0f };
+    float resolutionScale{ 1.0f };
+    float distanceScale{ 1.0f };
+};
+
 class Prisma {
 public:
     static void Install();
@@ -17,5 +29,6 @@ public:
         float yPercent,
         float resolutionScale,
         bool attached);
+    static void UpdateAttackWarnings(const std::vector<AttackWarningVisual>& warnings);
     static void Reset();
 };

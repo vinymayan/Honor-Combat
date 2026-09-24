@@ -14,7 +14,9 @@
 
 namespace {
     constexpr const char* kModDirectory = "Data/Viny Mods/Honor Combat";
-    constexpr const char* kUISettingsPath = "Data/Viny Mods/Honor Combat/UISettings.json";
+    constexpr const char* kLegacyUISettingsPath = "Data/Viny Mods/Honor Combat/UISettings.json";
+    constexpr const char* kPlayerUISettingsPath = "Data/Viny Mods/Honor Combat/PlayerUISettings.json";
+    constexpr const char* kNPCUISettingsPath = "Data/Viny Mods/Honor Combat/NPCUISettings.json";
     constexpr const char* kLanguagePath = "Data/Viny Mods/Honor Combat/Language.json";
     constexpr std::size_t kMaxAssetPathLength = 260;
 
@@ -35,7 +37,7 @@ namespace {
         return path;
     }
 
-    void ClampSettings(Settings::UISettings& ui) {
+    void ClampSettings(Settings::PlayerUISettings& ui) {
         ui.mergeWithPrevious[0] = false;
         if (ui.mergeDirection8With1) ui.mergeWithPrevious[7] = false;
         ui.positionXPercent = std::clamp(ui.positionXPercent, 0, 100);
@@ -62,6 +64,24 @@ namespace {
         ui.centerImage = NormalizeAssetPath(std::move(ui.centerImage));
     }
 
+    void ClampSettings(Settings::NPCUISettings& ui) {
+        ui.mergeWithPrevious[0] = false;
+        if (ui.mergeDirection8With1) ui.mergeWithPrevious[7] = false;
+        ui.scalePercent = std::clamp(ui.scalePercent, 20, 200);
+        ui.opacityPercent = std::clamp(ui.opacityPercent, 10, 100);
+        ui.offsetXPixels = std::clamp(ui.offsetXPixels, -1000, 1000);
+        ui.offsetYPixels = std::clamp(ui.offsetYPixels, -1000, 1000);
+        ui.rotationDegrees = std::clamp(ui.rotationDegrees, -180, 180);
+        ui.diameterPixels = std::clamp(ui.diameterPixels, 96, 800);
+        ui.innerDiameterPercent = std::clamp(ui.innerDiameterPercent, 10, 80);
+        ui.segmentGapPixels = std::clamp(ui.segmentGapPixels, 0, 30);
+        ClampColor(ui.activeColor);
+        ClampColor(ui.inactiveColor);
+        ClampColor(ui.borderColor);
+        ui.sharedSegmentImage = NormalizeAssetPath(std::move(ui.sharedSegmentImage));
+        for (auto& path : ui.segmentImages) path = NormalizeAssetPath(std::move(path));
+    }
+
     bool RenderIntSliderWithInput(const char* label, int* value, int minimum, int maximum) {
         bool changed = false;
         ImGui::PushID(label);
@@ -79,8 +99,8 @@ namespace {
         return changed;
     }
 
-    bool ReadDocument(rapidjson::Document& document) {
-        std::ifstream file(kUISettingsPath, std::ios::binary);
+    bool ReadDocument(const char* path, rapidjson::Document& document) {
+        std::ifstream file(path, std::ios::binary);
         if (!file.is_open()) {
             return false;
         }
@@ -158,79 +178,148 @@ namespace ModMenu {
 
     void LoadSettings() {
         rapidjson::Document document;
-        if (!ReadDocument(document)) {
-            ClampSettings(Settings::UI);
-            return;
-        }
+        const bool playerLoaded = ReadDocument(kPlayerUISettingsPath, document);
+        const bool legacyLoaded = !playerLoaded && ReadDocument(kLegacyUISettingsPath, document);
 
-        auto& ui = Settings::UI;
-        const auto readBool = [&](const char* key, bool& value) {
-            if (document.HasMember(key) && document[key].IsBool()) value = document[key].GetBool();
-        };
-        const auto readInt = [&](const char* key, int& value) {
-            if (document.HasMember(key) && document[key].IsInt()) value = document[key].GetInt();
-        };
-        const auto readString = [&](const rapidjson::Value& parent, const char* key, std::string& value) {
-            if (parent.HasMember(key) && parent[key].IsString()) value = parent[key].GetString();
-        };
+        auto& ui = Settings::PlayerUI;
+        if (playerLoaded || legacyLoaded) {
+            const auto readBool = [&](const char* key, bool& value) {
+                if (document.HasMember(key) && document[key].IsBool()) value = document[key].GetBool();
+            };
+            const auto readInt = [&](const char* key, int& value) {
+                if (document.HasMember(key) && document[key].IsInt()) value = document[key].GetInt();
+            };
+            const auto readString = [&](const rapidjson::Value& parent, const char* key, std::string& value) {
+                if (parent.HasMember(key) && parent[key].IsString()) value = parent[key].GetString();
+            };
 
-        readBool("enabled", ui.enabled);
-        readBool("editMode", ui.editMode);
-        readBool("blockReset", ui.blockReset);
-        readBool("useDirectionalDMK", ui.useDirectionalDMK);
-        readBool("requireTDMTargetLock", ui.requireTDMTargetLock);
-        readBool("showCenter", ui.showCenter);
-        readBool("moveCenterWithDirection", ui.moveCenterWithDirection);
-        readBool("centerInThirdPerson", ui.centerInThirdPerson);
-        readBool("scaleWithResolution", ui.scaleWithResolution);
-        readBool("mergeDirection8With1", ui.mergeDirection8With1);
-        readInt("positionXPercent", ui.positionXPercent);
-        readInt("positionYPercent", ui.positionYPercent);
-        readInt("attachOffsetXPixels", ui.attachOffsetXPixels);
-        readInt("attachOffsetYPixels", ui.attachOffsetYPixels);
-        readInt("scalePercent", ui.scalePercent);
-        readInt("diameterPixels", ui.diameterPixels);
-        readInt("innerDiameterPercent", ui.innerDiameterPercent);
-        readInt("centerPieceSizePercent", ui.centerPieceSizePercent);
-        readInt("segmentGapPixels", ui.segmentGapPixels);
-        readInt("rotationDegrees", ui.rotationDegrees);
-        readInt("opacityPercent", ui.opacityPercent);
-        readInt("centerMovementPixels", ui.centerMovementPixels);
-        readInt("centerMovementDurationMs", ui.centerMovementDurationMs);
-        ReadColor(document, "activeColor", ui.activeColor);
-        ReadColor(document, "inactiveColor", ui.inactiveColor);
-        ReadColor(document, "borderColor", ui.borderColor);
-        ReadColor(document, "centerColor", ui.centerColor);
-        if (document.HasMember("mergeWithPrevious") && document["mergeWithPrevious"].IsArray()) {
-            const auto& merges = document["mergeWithPrevious"];
-            for (rapidjson::SizeType i = 1; i < merges.Size() && i < Settings::kDirectionCount; ++i) {
-                if (merges[i].IsBool()) ui.mergeWithPrevious[i] = merges[i].GetBool();
+            readBool("enabled", ui.enabled);
+            readBool("editMode", ui.editMode);
+            readBool("blockReset", ui.blockReset);
+            readBool("useDirectionalDMK", ui.useDirectionalDMK);
+            readBool("requireTDMTargetLock", ui.requireTDMTargetLock);
+            readBool("showCenter", ui.showCenter);
+            readBool("moveCenterWithDirection", ui.moveCenterWithDirection);
+            readBool("centerInThirdPerson", ui.centerInThirdPerson);
+            readBool("scaleWithResolution", ui.scaleWithResolution);
+            readBool("mergeDirection8With1", ui.mergeDirection8With1);
+            readInt("positionXPercent", ui.positionXPercent);
+            readInt("positionYPercent", ui.positionYPercent);
+            readInt("attachOffsetXPixels", ui.attachOffsetXPixels);
+            readInt("attachOffsetYPixels", ui.attachOffsetYPixels);
+            readInt("scalePercent", ui.scalePercent);
+            readInt("diameterPixels", ui.diameterPixels);
+            readInt("innerDiameterPercent", ui.innerDiameterPercent);
+            readInt("centerPieceSizePercent", ui.centerPieceSizePercent);
+            readInt("segmentGapPixels", ui.segmentGapPixels);
+            readInt("rotationDegrees", ui.rotationDegrees);
+            readInt("opacityPercent", ui.opacityPercent);
+            readInt("centerMovementPixels", ui.centerMovementPixels);
+            readInt("centerMovementDurationMs", ui.centerMovementDurationMs);
+            ReadColor(document, "activeColor", ui.activeColor);
+            ReadColor(document, "inactiveColor", ui.inactiveColor);
+            ReadColor(document, "borderColor", ui.borderColor);
+            ReadColor(document, "centerColor", ui.centerColor);
+            if (document.HasMember("mergeWithPrevious") && document["mergeWithPrevious"].IsArray()) {
+                const auto& merges = document["mergeWithPrevious"];
+                for (rapidjson::SizeType i = 1; i < merges.Size() && i < Settings::kDirectionCount; ++i) {
+                    if (merges[i].IsBool()) ui.mergeWithPrevious[i] = merges[i].GetBool();
+                }
             }
-        }
-        readString(document, "sharedSegmentImage", ui.sharedSegmentImage);
-        readString(document, "centerImage", ui.centerImage);
-        if (document.HasMember("segmentImages") && document["segmentImages"].IsArray()) {
-            const auto& images = document["segmentImages"];
-            for (rapidjson::SizeType i = 0; i < images.Size() && i < Settings::kDirectionCount; ++i) {
-                if (images[i].IsString()) ui.segmentImages[i] = images[i].GetString();
+            readString(document, "sharedSegmentImage", ui.sharedSegmentImage);
+            readString(document, "centerImage", ui.centerImage);
+            if (document.HasMember("segmentImages") && document["segmentImages"].IsArray()) {
+                const auto& images = document["segmentImages"];
+                for (rapidjson::SizeType i = 0; i < images.Size() && i < Settings::kDirectionCount; ++i) {
+                    if (images[i].IsString()) ui.segmentImages[i] = images[i].GetString();
+                }
             }
-        }
-        if (!document.HasMember("layoutVersion") || !document["layoutVersion"].IsInt() ||
-            document["layoutVersion"].GetInt() < 2) {
-            ui.positionXPercent = 50;
-            ui.positionYPercent = 50;
+            if (!document.HasMember("layoutVersion") || !document["layoutVersion"].IsInt() ||
+                document["layoutVersion"].GetInt() < 2) {
+                ui.positionXPercent = 50;
+                ui.positionYPercent = 50;
+            }
         }
         ClampSettings(ui);
+
+        rapidjson::Document npcDocument;
+        const bool npcLoaded = ReadDocument(kNPCUISettingsPath, npcDocument);
+        const bool legacyNpcLoaded = !npcLoaded && ReadDocument(kLegacyUISettingsPath, npcDocument);
+        auto& npc = Settings::NPCUI;
+        if (npcLoaded || legacyNpcLoaded) {
+            const auto readBool = [&](const char* key, bool& value) {
+                if (npcDocument.HasMember(key) && npcDocument[key].IsBool()) value = npcDocument[key].GetBool();
+            };
+            const auto readInt = [&](const char* key, int& value) {
+                if (npcDocument.HasMember(key) && npcDocument[key].IsInt()) value = npcDocument[key].GetInt();
+            };
+            const auto readString = [&](const char* key, std::string& value) {
+                if (npcDocument.HasMember(key) && npcDocument[key].IsString()) value = npcDocument[key].GetString();
+            };
+            if (legacyNpcLoaded) {
+                readBool("showNpcAttackWarnings", npc.enabled);
+                readBool("alwaysShowNpcWarningsInCombat", npc.alwaysShowInCombat);
+                readBool("scaleNpcWarningsWithDistance", npc.scaleWithDistance);
+                readBool("mirrorNpcAttackDirections", npc.mirrorAttackDirections);
+                readBool("scaleWithResolution", npc.scaleWithResolution);
+                readInt("npcWarningScalePercent", npc.scalePercent);
+                readInt("npcWarningOpacityPercent", npc.opacityPercent);
+                readInt("npcWarningOffsetXPixels", npc.offsetXPixels);
+                readInt("npcWarningOffsetYPixels", npc.offsetYPixels);
+                readInt("npcWarningRotationDegrees", npc.rotationDegrees);
+                if (npcDocument.HasMember("npcMergeWithPrevious") && npcDocument["npcMergeWithPrevious"].IsArray()) {
+                    const auto& merges = npcDocument["npcMergeWithPrevious"];
+                    for (rapidjson::SizeType i = 1; i < merges.Size() && i < Settings::kDirectionCount; ++i) {
+                        if (merges[i].IsBool()) npc.mergeWithPrevious[i] = merges[i].GetBool();
+                    }
+                }
+                readBool("npcMergeDirection8With1", npc.mergeDirection8With1);
+            } else {
+                readBool("enabled", npc.enabled);
+                readBool("alwaysShowInCombat", npc.alwaysShowInCombat);
+                readBool("scaleWithDistance", npc.scaleWithDistance);
+                readBool("mirrorAttackDirections", npc.mirrorAttackDirections);
+                readBool("scaleWithResolution", npc.scaleWithResolution);
+                readInt("scalePercent", npc.scalePercent);
+                readInt("opacityPercent", npc.opacityPercent);
+                readInt("offsetXPixels", npc.offsetXPixels);
+                readInt("offsetYPixels", npc.offsetYPixels);
+                readInt("rotationDegrees", npc.rotationDegrees);
+                if (npcDocument.HasMember("mergeWithPrevious") && npcDocument["mergeWithPrevious"].IsArray()) {
+                    const auto& merges = npcDocument["mergeWithPrevious"];
+                    for (rapidjson::SizeType i = 1; i < merges.Size() && i < Settings::kDirectionCount; ++i) {
+                        if (merges[i].IsBool()) npc.mergeWithPrevious[i] = merges[i].GetBool();
+                    }
+                }
+                readBool("mergeDirection8With1", npc.mergeDirection8With1);
+            }
+            readInt("diameterPixels", npc.diameterPixels);
+            readInt("innerDiameterPercent", npc.innerDiameterPercent);
+            readInt("segmentGapPixels", npc.segmentGapPixels);
+            ReadColor(npcDocument, "activeColor", npc.activeColor);
+            ReadColor(npcDocument, "inactiveColor", npc.inactiveColor);
+            ReadColor(npcDocument, "borderColor", npc.borderColor);
+            readString("sharedSegmentImage", npc.sharedSegmentImage);
+            if (npcDocument.HasMember("segmentImages") && npcDocument["segmentImages"].IsArray()) {
+                const auto& images = npcDocument["segmentImages"];
+                for (rapidjson::SizeType i = 0; i < images.Size() && i < Settings::kDirectionCount; ++i) {
+                    if (images[i].IsString()) npc.segmentImages[i] = images[i].GetString();
+                }
+            }
+        }
+        ClampSettings(npc);
+        if (legacyLoaded || legacyNpcLoaded) SaveSettings();
     }
 
     void SaveSettings() {
-        ClampSettings(Settings::UI);
+        ClampSettings(Settings::PlayerUI);
+        ClampSettings(Settings::NPCUI);
         std::filesystem::create_directories(kModDirectory);
 
         rapidjson::Document document;
         document.SetObject();
         auto& allocator = document.GetAllocator();
-        const auto& ui = Settings::UI;
+        const auto& ui = Settings::PlayerUI;
         document.AddMember("layoutVersion", 2, allocator);
         document.AddMember("enabled", ui.enabled, allocator);
         document.AddMember("editMode", ui.editMode, allocator);
@@ -273,19 +362,55 @@ namespace ModMenu {
         rapidjson::StringBuffer buffer;
         rapidjson::PrettyWriter<rapidjson::StringBuffer> writer(buffer);
         document.Accept(writer);
-        std::ofstream file(kUISettingsPath, std::ios::binary);
+        std::ofstream file(kPlayerUISettingsPath, std::ios::binary);
         if (file.is_open()) {
             file << buffer.GetString();
         }
+
+        const auto& npc = Settings::NPCUI;
+        rapidjson::Document npcDocument;
+        npcDocument.SetObject();
+        auto& npcAllocator = npcDocument.GetAllocator();
+        npcDocument.AddMember("enabled", npc.enabled, npcAllocator);
+        npcDocument.AddMember("alwaysShowInCombat", npc.alwaysShowInCombat, npcAllocator);
+        npcDocument.AddMember("scaleWithResolution", npc.scaleWithResolution, npcAllocator);
+        npcDocument.AddMember("scaleWithDistance", npc.scaleWithDistance, npcAllocator);
+        npcDocument.AddMember("mirrorAttackDirections", npc.mirrorAttackDirections, npcAllocator);
+        npcDocument.AddMember("scalePercent", npc.scalePercent, npcAllocator);
+        npcDocument.AddMember("opacityPercent", npc.opacityPercent, npcAllocator);
+        npcDocument.AddMember("offsetXPixels", npc.offsetXPixels, npcAllocator);
+        npcDocument.AddMember("offsetYPixels", npc.offsetYPixels, npcAllocator);
+        npcDocument.AddMember("rotationDegrees", npc.rotationDegrees, npcAllocator);
+        npcDocument.AddMember("diameterPixels", npc.diameterPixels, npcAllocator);
+        npcDocument.AddMember("innerDiameterPercent", npc.innerDiameterPercent, npcAllocator);
+        npcDocument.AddMember("segmentGapPixels", npc.segmentGapPixels, npcAllocator);
+        WriteColor(npcDocument, "activeColor", npc.activeColor, npcAllocator);
+        WriteColor(npcDocument, "inactiveColor", npc.inactiveColor, npcAllocator);
+        WriteColor(npcDocument, "borderColor", npc.borderColor, npcAllocator);
+        rapidjson::Value npcMerges(rapidjson::kArrayType);
+        for (const bool merge : npc.mergeWithPrevious) npcMerges.PushBack(merge, npcAllocator);
+        npcDocument.AddMember("mergeWithPrevious", npcMerges, npcAllocator);
+        npcDocument.AddMember("mergeDirection8With1", npc.mergeDirection8With1, npcAllocator);
+        npcDocument.AddMember("sharedSegmentImage", rapidjson::Value(npc.sharedSegmentImage.c_str(), npcAllocator).Move(), npcAllocator);
+        rapidjson::Value npcImages(rapidjson::kArrayType);
+        for (const auto& image : npc.segmentImages) {
+            npcImages.PushBack(rapidjson::Value(image.c_str(), npcAllocator).Move(), npcAllocator);
+        }
+        npcDocument.AddMember("segmentImages", npcImages, npcAllocator);
+        rapidjson::StringBuffer npcBuffer;
+        rapidjson::PrettyWriter<rapidjson::StringBuffer> npcWriter(npcBuffer);
+        npcDocument.Accept(npcWriter);
+        std::ofstream npcFile(kNPCUISettingsPath, std::ios::binary);
+        if (npcFile.is_open()) npcFile << npcBuffer.GetString();
     }
 
-    void UIRender() {
-        auto& ui = Settings::UI;
+    void PlayerUIRender() {
+        auto& ui = Settings::PlayerUI;
         bool changed = false;
 
         if (ImGui::CollapsingHeader(GetLoc("menu.general", "General"), ImGuiTreeNodeFlags_DefaultOpen)) {
             ImGui::Indent();
-            changed |= ImGui::Checkbox(GetLoc("menu.enabled", "Enable Honor Combat HUD"), &ui.enabled);
+            changed |= ImGui::Checkbox(GetLoc("menu.enabled", "Enable player HUD"), &ui.enabled);
             changed |= ImGui::Checkbox(GetLoc("menu.edit_mode", "UI edit mode (keep HUD visible)"), &ui.editMode);
             changed |= ImGui::Checkbox(
                 GetLoc("menu.block_reset", "Block reset (SBF_BlockStart selects center)"),
@@ -393,12 +518,128 @@ namespace ModMenu {
             ImGui::Unindent();
         }
 
-        if (ImGui::Button(GetLoc("menu.reset", "Reset UI settings"))) {
-            ui = Settings::UISettings{};
+        if (ImGui::Button(GetLoc("menu.reset_player", "Reset player UI settings"))) {
+            ui = Settings::PlayerUISettings{};
+            changed = true;
+        }
+        ClampSettings(ui);
+        if (changed) {
+            SaveSettings();
+            Prisma::ApplyUISettings();
+        }
+    }
+
+    void NPCUIRender() {
+        auto& npc = Settings::NPCUI;
+        bool changed = false;
+        if (ImGui::CollapsingHeader(GetLoc("menu.npc_warnings", "NPC attack warnings"), ImGuiTreeNodeFlags_DefaultOpen)) {
+            ImGui::Indent();
+            changed |= ImGui::Checkbox(
+                GetLoc("menu.npc_warnings_enabled", "Show attack warnings on NPCs targeting the player"),
+                &npc.enabled);
+            changed |= ImGui::Checkbox(
+                GetLoc("menu.npc_warnings_always_in_combat", "Always show NPC indicators while they target the player in combat"),
+                &npc.alwaysShowInCombat);
+            changed |= ImGui::Checkbox(
+                GetLoc("menu.npc_warnings_scale_with_distance", "Reduce NPC indicator size with camera distance"),
+                &npc.scaleWithDistance);
+            changed |= ImGui::Checkbox(
+                GetLoc("menu.npc_resolution_scale", "Scale NPC indicators with screen resolution"),
+                &npc.scaleWithResolution);
+            changed |= ImGui::Checkbox(
+                GetLoc("menu.npc_warnings_mirror", "Mirror NPC attack directions"),
+                &npc.mirrorAttackDirections);
+            ImGui::TextWrapped("%s", GetLoc(
+                "menu.npc_warnings_mirror_help",
+                "Mirroring swaps left and right for a front-facing view. Leave it disabled when the direction already matches what you see in game."));
+            ImGui::Separator();
+            ImGui::TextWrapped("%s", GetLoc(
+                "menu.npc_direction_groups_help",
+                "Merge adjacent NPC warning directions. Each group uses the image/SVG of its first direction."));
+            for (std::size_t index = 1; index < Settings::kDirectionCount; ++index) {
+                const std::string label = std::format(
+                    "{} {} {}##npc_direction_merge_{}",
+                    GetLoc("menu.merge_direction", "Merge direction"),
+                    index + 1,
+                    GetLoc("menu.with_previous", "with previous"),
+                    index + 1);
+                if (ImGui::Checkbox(label.c_str(), &npc.mergeWithPrevious[index])) {
+                    if (index == 7 && npc.mergeWithPrevious[index]) npc.mergeDirection8With1 = false;
+                    changed = true;
+                }
+            }
+            if (ImGui::Checkbox(
+                    GetLoc(
+                        "menu.npc_merge_direction_8_with_1",
+                        "Merge direction 8 with direction 1 (uses direction 1 image)##npc"),
+                    &npc.mergeDirection8With1)) {
+                if (npc.mergeDirection8With1) npc.mergeWithPrevious[7] = false;
+                changed = true;
+            }
+            std::string npcSummary;
+            std::size_t npcGroupStart = 0;
+            const std::size_t npcLinearCount = npc.mergeDirection8With1 ? 7 : Settings::kDirectionCount;
+            for (std::size_t index = 1; index <= npcLinearCount; ++index) {
+                if (index == npcLinearCount || !npc.mergeWithPrevious[index]) {
+                    if (!npcSummary.empty()) npcSummary += " | ";
+                    if (npcGroupStart == 0 && npc.mergeDirection8With1) npcSummary += "8+";
+                    npcSummary += std::to_string(npcGroupStart + 1);
+                    if (index > npcGroupStart + 1) npcSummary += "-" + std::to_string(index);
+                    npcGroupStart = index;
+                }
+            }
+            ImGui::Text("%s: %s", GetLoc("menu.direction_groups_summary", "Groups"), npcSummary.c_str());
+            ImGui::Separator();
+            changed |= RenderIntSliderWithInput(
+                GetLoc("menu.npc_warnings_scale", "NPC warning scale (%)"),
+                &npc.scalePercent,
+                20,
+                200);
+            changed |= RenderIntSliderWithInput(
+                GetLoc("menu.npc_warnings_opacity", "NPC warning opacity (%)"),
+                &npc.opacityPercent,
+                10,
+                100);
+            changed |= RenderIntSliderWithInput(
+                GetLoc("menu.npc_warnings_offset_x", "NPC warning horizontal offset (pixels)"),
+                &npc.offsetXPixels,
+                -1000,
+                1000);
+            changed |= RenderIntSliderWithInput(
+                GetLoc("menu.npc_warnings_offset_y", "NPC warning vertical offset (positive moves up)"),
+                &npc.offsetYPixels,
+                -1000,
+                1000);
+            changed |= RenderIntSliderWithInput(
+                GetLoc("menu.npc_warnings_rotation", "NPC warning rotation (degrees)"),
+                &npc.rotationDegrees,
+                -180,
+                180);
+            changed |= RenderIntSliderWithInput(
+                GetLoc("menu.npc_diameter", "NPC base diameter (pixels)"), &npc.diameterPixels, 96, 800);
+            changed |= RenderIntSliderWithInput(
+                GetLoc("menu.npc_inner_diameter", "NPC center opening (%)"), &npc.innerDiameterPercent, 10, 80);
+            changed |= RenderIntSliderWithInput(
+                GetLoc("menu.npc_segment_gap", "NPC segment gap (pixels)"), &npc.segmentGapPixels, 0, 30);
+            ImGui::Unindent();
+        }
+
+        if (ImGui::CollapsingHeader(GetLoc("menu.colors", "Colors"), ImGuiTreeNodeFlags_DefaultOpen)) {
+            ImGui::Indent();
+            constexpr ImGuiColorEditFlags colorFlags =
+                ImGuiColorEditFlags_AlphaBar | ImGuiColorEditFlags_AlphaPreviewHalf;
+            changed |= ImGui::ColorEdit4(GetLoc("menu.active_color", "Active direction"), npc.activeColor.data(), colorFlags);
+            changed |= ImGui::ColorEdit4(GetLoc("menu.inactive_color", "Inactive directions"), npc.inactiveColor.data(), colorFlags);
+            changed |= ImGui::ColorEdit4(GetLoc("menu.border_color", "Segment border"), npc.borderColor.data(), colorFlags);
+            ImGui::Unindent();
+        }
+
+        if (ImGui::Button(GetLoc("menu.reset_npc", "Reset NPC UI settings"))) {
+            npc = Settings::NPCUISettings{};
             changed = true;
         }
 
-        ClampSettings(ui);
+        ClampSettings(npc);
         if (changed) {
             SaveSettings();
             Prisma::ApplyUISettings();
@@ -413,6 +654,7 @@ namespace ModMenu {
             return;
         }
         SKSEMenuFramework::SetSection("Honor Combat");
-        SKSEMenuFramework::AddSectionItem(GetLoc("menu.ui_settings", "UI Settings"), UIRender);
+        SKSEMenuFramework::AddSectionItem(GetLoc("menu.player_ui_settings", "Player UI"), PlayerUIRender);
+        SKSEMenuFramework::AddSectionItem(GetLoc("menu.npc_ui_settings", "NPC UI"), NPCUIRender);
     }
 }

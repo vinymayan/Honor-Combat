@@ -12,6 +12,7 @@ public:
     void RegisterMenuListener();
     void RegisterPlayerAnimationSink();
     void UpdateFrame();
+    void ClearAttackWarnings();
     void Reset();
 
     RE::BSEventNotifyControl ProcessEvent(

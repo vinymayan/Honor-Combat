@@ -34,3 +34,8 @@
     transition-property: transform;
     transition-timing-function: ease-out;
 }
+
+.attack-warning {
+    z-index: 2;
+    will-change: left, top, transform;
+}
