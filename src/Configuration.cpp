@@ -13,11 +13,11 @@
 #include <unordered_map>
 
 namespace {
-    constexpr const char* kModDirectory = "Data/Viny Mods/Honor Combat";
-    constexpr const char* kLegacyUISettingsPath = "Data/Viny Mods/Honor Combat/UISettings.json";
-    constexpr const char* kPlayerUISettingsPath = "Data/Viny Mods/Honor Combat/PlayerUISettings.json";
-    constexpr const char* kNPCUISettingsPath = "Data/Viny Mods/Honor Combat/NPCUISettings.json";
-    constexpr const char* kLanguagePath = "Data/Viny Mods/Honor Combat/Language.json";
+    constexpr const char* kModDirectory = "Data/Viny Mods/Honor the Fight";
+    constexpr const char* kLegacyUISettingsPath = "Data/Viny Mods/Honor the Fight/UISettings.json";
+    constexpr const char* kPlayerUISettingsPath = "Data/Viny Mods/Honor the Fight/PlayerUISettings.json";
+    constexpr const char* kNPCUISettingsPath = "Data/Viny Mods/Honor the Fight/NPCUISettings.json";
+    constexpr const char* kLanguagePath = "Data/Viny Mods/Honor the Fight/Language.json";
     constexpr std::size_t kMaxAssetPathLength = 260;
 
     std::unordered_map<std::string, std::string> language;
@@ -413,7 +413,7 @@ namespace ModMenu {
             changed |= ImGui::Checkbox(GetLoc("menu.enabled", "Enable player HUD"), &ui.enabled);
             changed |= ImGui::Checkbox(GetLoc("menu.edit_mode", "UI edit mode (keep HUD visible)"), &ui.editMode);
             changed |= ImGui::Checkbox(
-                GetLoc("menu.block_reset", "Block reset (SBF_BlockStart selects center)"),
+                GetLoc("menu.block_reset", "Block reset direction"),
                 &ui.blockReset);
             changed |= ImGui::Checkbox(
                 GetLoc("menu.use_directional_dmk", "Use DMK directional movement instead of camera"),
@@ -653,7 +653,7 @@ namespace ModMenu {
             logger::warn("SKSE Menu Framework not found; Honor Combat will use saved/default UI settings.");
             return;
         }
-        SKSEMenuFramework::SetSection("Honor Combat");
+        SKSEMenuFramework::SetSection("Honor the Fight");
         SKSEMenuFramework::AddSectionItem(GetLoc("menu.player_ui_settings", "Player UI"), PlayerUIRender);
         SKSEMenuFramework::AddSectionItem(GetLoc("menu.npc_ui_settings", "NPC UI"), NPCUIRender);
     }
